@@ -259,11 +259,6 @@ HRESULT SetVideoFormat(IMFSourceReader *pReader) {
     if (SUCCEEDED(hr)) {
       hr = pReader->SetCurrentMediaType(
           (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, fallbackType);
-      if (SUCCEEDED(hr)) {
-        wprintf(L"Successfully set fallback format.\n");
-      } else {
-        wprintf(L"Failed to set fallback format.\n");
-      }
       fallbackType->Release();
     }
   }
@@ -271,46 +266,57 @@ HRESULT SetVideoFormat(IMFSourceReader *pReader) {
   return hr;
 }
 
-// Main function
-int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
-                      LPWSTR lpCmdLine, int nCmdShow) {
+// Main entry point
+int main() {
+  // Initialize the webcam
   HRESULT hr = InitWebcam();
   if (FAILED(hr)) {
     PrintError(hr);
     return -1;
   }
 
-  // Register window class
-  WNDCLASS wc = {};
+  // Create a simple window to render the video frames
+  WNDCLASS wc = {0};
   wc.lpfnWndProc = WndProc;
-  wc.hInstance = hInstance;
+  wc.hInstance = GetModuleHandle(NULL);
   wc.lpszClassName = "WebcamWindow";
-  RegisterClass(&wc);
 
-  // Create window
-  g_hwnd = CreateWindowEx(0, wc.lpszClassName, "Webcam Viewer",
-                          WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT,
-                          CW_USEDEFAULT, 800, 600, NULL, NULL, hInstance, NULL);
-
-  if (!g_hwnd) {
-    PrintError(HRESULT_FROM_WIN32(GetLastError()));
+  if (!RegisterClass(&wc)) {
+    wprintf(L"Failed to register window class.\n");
     Cleanup();
     return -1;
   }
 
-  // Main message loop
-  MSG msg = {};
-  while (msg.message != WM_QUIT) {
-    if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-      TranslateMessage(&msg);
-      DispatchMessage(&msg);
-    } else {
-      if (SUCCEEDED(ProcessFrame())) {
-        InvalidateRect(g_hwnd, NULL, FALSE);
-      }
-    }
+  g_hwnd = CreateWindowEx(0, wc.lpszClassName, "Webcam Viewer",
+                          WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
+                          640, 480, NULL, NULL, wc.hInstance, NULL);
+  if (g_hwnd == NULL) {
+    wprintf(L"Failed to create window.\n");
+    Cleanup();
+    return -1;
   }
 
+  ShowWindow(g_hwnd, SW_SHOWNORMAL);
+
+  // Main message loop
+  MSG msg = {0};
+  while (GetMessage(&msg, NULL, 0, 0)) {
+    TranslateMessage(&msg);
+    DispatchMessage(&msg);
+
+    // Process frame every 50 ms (approximately)
+    hr = ProcessFrame();
+    if (FAILED(hr)) {
+      PrintError(hr);
+      //break;
+    }
+
+    // Invalidate the window to trigger WM_PAINT and render the frame
+    InvalidateRect(g_hwnd, NULL, TRUE);
+    Sleep(50);
+  }
+
+  // Cleanup and shutdown
   Cleanup();
   return 0;
 }
